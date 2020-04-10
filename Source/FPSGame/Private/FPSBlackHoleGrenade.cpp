@@ -29,19 +29,26 @@ AFPSBlackHoleGrenade::AFPSBlackHoleGrenade()
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->SetCollisionProfileName("Projectile");
 	CollisionComp->OnComponentHit.AddDynamic(this, &AFPSBlackHoleGrenade::OnHit);	// set up a notification for when this component hits something blocking
+	
 	// Players can't walk on it
 	CollisionComp->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
 	CollisionComp->CanCharacterStepUpOn = ECB_No;
+	
 	// Set as root component
 	RootComponent = CollisionComp;
 
 	OuterSphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("OuterSphereComp"));
-	OuterSphereComponent->SetSphereRadius(GrenadeRadius);
+	OuterSphereComponent->InitSphereRadius(GrenadeRadius);
+	OuterSphereComponent->SetCollisionProfileName("OverlapAll");
 	OuterSphereComponent->SetupAttachment(RootComponent);
 
 	// Use a ProjectileMovementComponent to govern this projectile's movement
 	GrenadeMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileComp"));
 	GrenadeMovement->UpdatedComponent = CollisionComp;
+	GrenadeMovement->InitialSpeed = 1500.0f;
+	GrenadeMovement->MaxSpeed = 1500.0f;
+	GrenadeMovement->bRotationFollowsVelocity = true;
+	GrenadeMovement->bShouldBounce = true;
 
 	GrenadeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GrenadeMesh"));
 	GrenadeMesh->SetupAttachment(RootComponent);

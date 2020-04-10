@@ -9,11 +9,11 @@
 class UInputComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
-class AFPSGrenade;
-class AFPSBlackHoleGrenade;
 class USoundBase;
 class UAnimSequence;
 class USpringArmComponent;
+class UPawnNoiseEmitterComponent;
+class AActor;
 
 
 UCLASS()
@@ -46,8 +46,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	UCameraComponent* CameraComponent;
 
-	UPROPERTY(EditDefaultsOnly, Category="Grenade")
-	TSubclassOf<AFPSGrenade> GrenadeClass;
+	UPROPERTY(EditDefaultsOnly, Category="Throwable")
+	TSubclassOf<AActor> ThrowableClass;
 
 	UPROPERTY(EditDefaultsOnly, Category="Grenade")
 	USoundBase* ThrowSound;
@@ -62,11 +62,13 @@ protected:
 	/** AnimMontage to play each time we fire */
 	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
 	UAnimSequenceBase* FireAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+	UPawnNoiseEmitterComponent* NoiseEmitterComponent;
 	
-	/** Fires a projectile. */
 	void Fire();
 
-	void ThrowGrenade();
+	void Throw();
 
 	/** Handles moving forward/backward */
 	void MoveForward(float Val);

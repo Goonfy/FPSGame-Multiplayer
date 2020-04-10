@@ -21,21 +21,29 @@ AFPSGrenade::AFPSGrenade()
 
 	// Use a sphere as a simple collision representation
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
+	CollisionComp->InitSphereRadius(5.0f);
 	CollisionComp->SetCollisionProfileName("Projectile");
 	CollisionComp->OnComponentHit.AddDynamic(this, &AFPSGrenade::OnHit);	// set up a notification for when this component hits something blocking
+	
 	// Players can't walk on it
 	CollisionComp->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
 	CollisionComp->CanCharacterStepUpOn = ECB_No;
+	
 	// Set as root component
 	RootComponent = CollisionComp;
 
 	OuterSphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("OuterSphereComp"));
-	OuterSphereComponent->SetSphereRadius(GrenadeRadius);
+	OuterSphereComponent->InitSphereRadius(GrenadeRadius);
+	OuterSphereComponent->SetCollisionProfileName("OverlapAll");
 	OuterSphereComponent->SetupAttachment(RootComponent);
 
 	// Use a ProjectileMovementComponent to govern this projectile's movement
 	GrenadeMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileComp"));
 	GrenadeMovement->UpdatedComponent = CollisionComp;
+	GrenadeMovement->InitialSpeed = 1500.0f;
+	GrenadeMovement->MaxSpeed = 1500.0f;
+	GrenadeMovement->bRotationFollowsVelocity = true;
+	GrenadeMovement->bShouldBounce = true;
 
 	GrenadeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("GrenadeMesh"));
 	GrenadeMesh->SetupAttachment(RootComponent);
@@ -47,7 +55,7 @@ void AFPSGrenade::BeginPlay()
 	Super::BeginPlay();
 
 	/* Activate the fuze to explode the bomb after several seconds */
-	GetWorld()->GetTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSGrenade::OnExplode, MaxFuzeTime, false);
+	GetWorldTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSGrenade::OnExplode, MaxFuzeTime, false);
 }
 
 void AFPSGrenade::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
@@ -57,10 +65,14 @@ void AFPSGrenade::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimi
 	{
 		OtherComp->AddImpulseAtLocation(GetVelocity() * 100.f, GetActorLocation());
 	}
+
+	MakeNoise(1.0f, GetInstigator());
 }
 
 void AFPSGrenade::OnExplode()
 {
+	MakeNoise(1.0f, GetInstigator());
+
 	DrawDebugSphere(GetWorld(), GetActorLocation(), GrenadeRadius, 50, FColor::Red, false, 1.f, 0.f, 1.f);
 	
 	TArray<AActor*> OverlappingActors;
@@ -96,7 +108,7 @@ void AFPSGrenade::OnExplode()
 		UGameplayStatics::PlaySoundAtLocation(this, ActivateGrenadeSound, GetActorLocation());
 
 	// Clear ALL timers that belong to this (Actor) instance.
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	GetWorldTimerManager().ClearAllTimersForObject(this);
 
 	Destroy();
 }

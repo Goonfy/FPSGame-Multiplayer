@@ -1,12 +1,13 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "FPSCharacter.h"
-#include "FPSGrenade.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "Components/PawnNoiseEmitterComponent.h"
+#include "GameFramework/Actor.h"
 
 AFPSCharacter::AFPSCharacter()
 {
@@ -27,6 +28,8 @@ AFPSCharacter::AFPSCharacter()
 	GunMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
 	GunMeshComponent->CastShadow = false;
 	GunMeshComponent->SetupAttachment(Mesh1PComponent, "GripPoint");
+
+	NoiseEmitterComponent = CreateDefaultSubobject<UPawnNoiseEmitterComponent>(TEXT("NoiseEmitter"));
 }
 
 
@@ -37,7 +40,7 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AFPSCharacter::Fire);
-	PlayerInputComponent->BindAction("ThrowGrenade", IE_Pressed, this, &AFPSCharacter::ThrowGrenade);
+	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AFPSCharacter::Throw);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFPSCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &AFPSCharacter::MoveRight);
@@ -95,6 +98,8 @@ void AFPSCharacter::Fire()
   		DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Purple, false, 5.f, ECC_WorldStatic, 1.f);
 	}
 
+	MakeNoise(1.0f, this);
+
 	// try and play the sound if specified
 	if (FireSound)
 	{
@@ -113,19 +118,25 @@ void AFPSCharacter::Fire()
 	}
 }
 
-void AFPSCharacter::ThrowGrenade()
+void AFPSCharacter::Throw()
 {
-	if (GrenadeClass)
+	if (ThrowableClass)
 	{
-		FVector MuzzleLocation = GunMeshComponent->GetSocketLocation("Muzzle");
-		FRotator MuzzleRotation = GunMeshComponent->GetSocketRotation("Muzzle");
+		//To Spawn outside player collision box
+		float ProjectileSpawnOffset = 30.0f;
+
+		FVector PlayerLocation = GetActorLocation();
+		FRotator PlayerRotation = GetActorRotation();
+		FVector ForwardVector = GetActorForwardVector();
+
+		PlayerLocation = PlayerLocation + (ForwardVector * ProjectileSpawnOffset);
 
 		//Set Spawn Collision Handling Override
 		FActorSpawnParameters ActorSpawnParams;
-		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-		// spawn the projectile at the muzzle
-		GetWorld()->SpawnActor<AFPSGrenade>(GrenadeClass, MuzzleLocation, MuzzleRotation, ActorSpawnParams);
+		// spawn the projectile at Character Location
+		GetWorld()->SpawnActor<AActor>(ThrowableClass, PlayerLocation, PlayerRotation, ActorSpawnParams);
 	
 		if (ThrowSound)
 		{

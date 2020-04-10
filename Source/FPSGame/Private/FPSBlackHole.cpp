@@ -21,14 +21,16 @@ AFPSBlackHole::AFPSBlackHole()
 	RootComponent = MeshComp;
 
 	InnerSphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("InnerSphereComp"));
-	InnerSphereComponent->SetSphereRadius(100);
+	InnerSphereComponent->InitSphereRadius(100);
+	InnerSphereComponent->SetCollisionProfileName("OverlapAll");
 	InnerSphereComponent->SetupAttachment(MeshComp);
 
 	// Bind to Event
 	InnerSphereComponent->OnComponentBeginOverlap.AddDynamic(this, &AFPSBlackHole::OverlapInnerSphere);
 
 	OuterSphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("OuterSphereComp"));
-	OuterSphereComponent->SetSphereRadius(BlackHoleRadius);
+	OuterSphereComponent->InitSphereRadius(BlackHoleRadius);
+	OuterSphereComponent->SetCollisionProfileName("OverlapAll");
 	OuterSphereComponent->SetupAttachment(MeshComp);
 
 	// Die after x seconds by default

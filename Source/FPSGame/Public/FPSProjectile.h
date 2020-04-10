@@ -9,7 +9,7 @@
 
 class UProjectileMovementComponent;
 class USphereComponent;
-
+class UStaticMeshComponent;
 
 UCLASS()
 class FPSGAME_API AFPSProjectile : public AActor
@@ -37,5 +37,8 @@ protected:
 	/** Projectile movement component */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	UProjectileMovementComponent* ProjectileMovement;
+
+	UPROPERTY(VisibleAnywhere, Category= "Projectile")
+	UStaticMeshComponent* ProjectileMesh;
 };
 
