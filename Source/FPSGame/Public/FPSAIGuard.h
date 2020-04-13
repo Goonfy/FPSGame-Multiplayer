@@ -36,6 +36,7 @@ protected:
 	FRotator OriginalRotation;
 
 	FTimerHandle TimerHandle_ResetOrientation;
+	FTimerHandle TimerHandle_WalkToNoise;
 
 	EAIState GuardState;
 
@@ -49,6 +50,10 @@ protected:
 	int PatrolPointNumber;
 
 	bool bIsSuspicious;
+	bool bIsAlerted;
+
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	UFUNCTION()
 	void OnPawnSeen(APawn* SeenPawn);
@@ -58,6 +63,9 @@ protected:
 
 	UFUNCTION()
 	void ResetOrientation();
+
+	UFUNCTION()
+	void WalkToNoise(FVector Location);
 
 	void SetGuardState(EAIState NewState);
 

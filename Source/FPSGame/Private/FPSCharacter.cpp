@@ -8,6 +8,9 @@
 #include "DrawDebugHelpers.h"
 #include "Components/PawnNoiseEmitterComponent.h"
 #include "GameFramework/Actor.h"
+#include "FPSAIGuard.h"
+#include "FPSWeapon.h"
+#include "Components/BoxComponent.h"
 
 AFPSCharacter::AFPSCharacter()
 {
@@ -24,14 +27,33 @@ AFPSCharacter::AFPSCharacter()
 	Mesh1PComponent->SetRelativeRotation(FRotator(2.0f, -15.0f, 5.0f));
 	Mesh1PComponent->SetRelativeLocation(FVector(0, 0, -160.0f));
 
-	// Create a gun mesh component
-	GunMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
-	GunMeshComponent->CastShadow = false;
-	GunMeshComponent->SetupAttachment(Mesh1PComponent, "GripPoint");
-
 	NoiseEmitterComponent = CreateDefaultSubobject<UPawnNoiseEmitterComponent>(TEXT("NoiseEmitter"));
 }
 
+// Called when the game starts or when spawned
+void AFPSCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	
+	//Set Spawn Collision Handling Override
+	FActorSpawnParameters ActorSpawnParams;
+	ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ActorSpawnParams.Owner = this;
+
+	// spawn the Weapon at First Person Mesh
+	Weapon = GetWorld()->SpawnActor<AActor>(WeaponClass, GetActorLocation(), GetActorRotation(), ActorSpawnParams);
+	if (Weapon)
+	{
+		Weapon->AttachToComponent(Mesh1PComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale, "GripPoint");
+	}
+
+	/* // spawn the Weapon at Third Person Mesh
+	DummyWeapon = GetWorld()->SpawnActor<AActor>(WeaponClass, GetActorLocation(), GetActorRotation(), ActorSpawnParams);
+	if (DummyWeapon)
+	{
+		DummyWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, "GripPoint");
+	} */
+}
 
 void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -39,7 +61,7 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	check(PlayerInputComponent);
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AFPSCharacter::Fire);
+	//PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AFPSWeapon::Fire);
 	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AFPSCharacter::Throw);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFPSCharacter::MoveForward);
@@ -47,75 +69,6 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
-}
-
-
-void AFPSCharacter::Fire()
-{
-	float LineTraceDistance = 1500.f;
-
-	FVector StartTrace = GetFirstPersonCameraComponent()->GetComponentLocation();
-	FVector ForwardVector = GetFirstPersonCameraComponent()->GetForwardVector();
-	FVector EndTrace = StartTrace + (ForwardVector * LineTraceDistance);
-	
-	// additional trace parameters
-	FCollisionQueryParams TraceParams(FName(TEXT("InteractTrace")), true, NULL);
-	TraceParams.bTraceComplex = true;
-	TraceParams.bReturnPhysicalMaterial = true;
-	TraceParams.AddIgnoredActor(this);
-
-	//Re-initialize hit info
-	FHitResult HitDetails = FHitResult(ForceInit);
-
-	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
-		HitDetails,      // FHitResult object that will be populated with hit info
-		StartTrace,      // starting position
-		EndTrace,        // end position
-		ECC_GameTraceChannel3,  // collision channel - 3rd custom one
-		TraceParams      // additional trace settings
-	);
-
-	if (bIsHit && HitDetails.GetActor())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("We hit something"));
-		// start to end, green, will lines always stay on, depth priority, thickness of line
-		DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Green, false, 5.f, ECC_WorldStatic, 1.f);
-
-		UE_LOG(LogTemp, Warning, TEXT("Hit actor name %s"), *HitDetails.GetActor()->GetName());
-		UE_LOG(LogTemp, Warning, TEXT("Hit actor distance %s"), *FString::SanitizeFloat(HitDetails.Distance));
-		DrawDebugBox(GetWorld(), HitDetails.ImpactPoint, FVector(10.f, 10.f, 10.f), FColor::Red, false, 5.f, ECC_WorldStatic, 5.f);
-
-		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(HitDetails.GetActor()->GetRootComponent());
-		if (PrimComp && PrimComp->IsSimulatingPhysics())
-		{
-			PrimComp->AddImpulseAtLocation(ForwardVector * 1000.f * PrimComp->GetMass(), HitDetails.ImpactPoint);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Nothing was hit"));
-  		// start to end, purple, will lines always stay on, depth priority, thickness of line
-  		DrawDebugLine(GetWorld(), StartTrace, EndTrace, FColor::Purple, false, 5.f, ECC_WorldStatic, 1.f);
-	}
-
-	MakeNoise(1.0f, this);
-
-	// try and play the sound if specified
-	if (FireSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
-	}
-
-	// try and play a firing animation if specified
-	if (FireAnimation)
-	{
-		// Get the animation object for the arms mesh
-		UAnimInstance* AnimInstance = Mesh1PComponent->GetAnimInstance();
-		if (AnimInstance)
-		{
-			AnimInstance->PlaySlotAnimationAsDynamicMontage(FireAnimation, "Arms", 0.0f);
-		}
-	}
 }
 
 void AFPSCharacter::Throw()
@@ -126,17 +79,17 @@ void AFPSCharacter::Throw()
 		float ProjectileSpawnOffset = 30.0f;
 
 		FVector PlayerLocation = GetActorLocation();
-		FRotator PlayerRotation = GetActorRotation();
-		FVector ForwardVector = GetActorForwardVector();
+		FRotator PlayerRotation = GetFirstPersonCameraComponent()->GetComponentRotation();
 
-		PlayerLocation = PlayerLocation + (ForwardVector * ProjectileSpawnOffset);
+		FVector SpawnLocation = PlayerLocation + (PlayerRotation.Vector() * ProjectileSpawnOffset);
 
 		//Set Spawn Collision Handling Override
 		FActorSpawnParameters ActorSpawnParams;
 		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ActorSpawnParams.Instigator = this;
 
 		// spawn the projectile at Character Location
-		GetWorld()->SpawnActor<AActor>(ThrowableClass, PlayerLocation, PlayerRotation, ActorSpawnParams);
+		GetWorld()->SpawnActor<AActor>(ThrowableClass, SpawnLocation, PlayerRotation, ActorSpawnParams);
 	
 		if (ThrowSound)
 		{
@@ -170,4 +123,15 @@ void AFPSCharacter::MoveRight(float Value)
 		// add movement in that direction
 		AddMovementInput(GetActorRightVector(), Value);
 	}
+}
+
+void AFPSCharacter::Die()
+{
+	AFPSWeapon* FPSWeapon = Cast<AFPSWeapon>(Weapon);
+	if (FPSWeapon)
+	{
+		FPSWeapon->BoxComponent->SetSimulatePhysics(true);
+	}
+
+	Destroy();
 }

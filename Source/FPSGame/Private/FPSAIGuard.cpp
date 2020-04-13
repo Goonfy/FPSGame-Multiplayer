@@ -7,6 +7,8 @@
 #include "FPSGameMode.h"
 #include "Engine/World.h"
 #include "AIController.h"
+#include "Components/CapsuleComponent.h"
+#include "FPSCharacter.h"
 
 // Sets default values
 AFPSAIGuard::AFPSAIGuard()
@@ -18,10 +20,13 @@ AFPSAIGuard::AFPSAIGuard()
 	PawnSensingComp->OnSeePawn.AddDynamic(this, &AFPSAIGuard::OnPawnSeen);
 	PawnSensingComp->OnHearNoise.AddDynamic(this, &AFPSAIGuard::OnNoiseHeard);
 
+	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AFPSAIGuard::OnHit);
+
 	GuardState = EAIState::Idle;
 
 	PatrolPointNumber = 0;
 	bIsSuspicious = false;
+	bIsAlerted = false;
 }
 
 // Called when the game starts or when spawned
@@ -41,9 +46,13 @@ void AFPSAIGuard::Tick(float DeltaTime)
 
 	if (CurrentPatrolPoint)
 	{
-		if (AIController->GetMoveStatus() == EPathFollowingStatus::Idle && !bIsSuspicious)
+		if (AIController->GetMoveStatus() == EPathFollowingStatus::Idle && !bIsSuspicious && !bIsAlerted)
 		{
 			MoveToNextPatrolPoint();
+		}
+		else if (bIsAlerted)
+		{
+
 		}
 	}
 }
@@ -55,21 +64,23 @@ void AFPSAIGuard::OnPawnSeen(APawn* SeenPawn)
 		DrawDebugSphere(GetWorld(), SeenPawn->GetActorLocation(), 32.0f, 12, FColor::Red, false, 10.0f, 0.0f, 1.0f);	
 	}
 
-	AFPSGameMode* GM = Cast<AFPSGameMode>(GetWorld()->GetAuthGameMode());
+	/* AFPSGameMode* GM = Cast<AFPSGameMode>(GetWorld()->GetAuthGameMode());
 	if (GM)
 	{
 		GM->CompleteMission(SeenPawn, false);
-	}
+	} */
 
 	SetGuardState(EAIState::Alerted);
 
-	// Stop Movement
+	AIController->MoveToActor(SeenPawn, 0.0f);
+
+	/* // Stop Movement
 	if (AIController)
 	{
 		AIController->StopMovement();
-	}
+	} */
 
-	bIsSuspicious = true;
+	bIsAlerted = true;
 }
 
 void AFPSAIGuard::OnNoiseHeard(APawn* NoiseInstigator, const FVector& Location, float Volume)
@@ -90,8 +101,8 @@ void AFPSAIGuard::OnNoiseHeard(APawn* NoiseInstigator, const FVector& Location, 
 
 	SetActorRotation(NewLookAt);
 
-	GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
-	GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 5.0f);
+	GetWorldTimerManager().ClearTimer(TimerHandle_WalkToNoise);
+	GetWorldTimerManager().SetTimer(TimerHandle_WalkToNoise, FTimerDelegate::CreateUObject(this, &AFPSAIGuard::WalkToNoise, Location), 5.0f, false);
 
 	SetGuardState(EAIState::Suspicious);
 
@@ -134,11 +145,11 @@ void AFPSAIGuard::SetGuardState(EAIState NewState)
 
 void AFPSAIGuard::MoveToNextPatrolPoint()
 {
-	for(auto& PatrolPoint : PatrolPoints)
+	for(PatrolPointNumber; PatrolPointNumber < PatrolPoints.Num(); PatrolPointNumber++)
 	{
-		if (PatrolPoint != CurrentPatrolPoint)
+		if (PatrolPoints[PatrolPointNumber] != CurrentPatrolPoint)
 		{
-			CurrentPatrolPoint = PatrolPoint;
+			CurrentPatrolPoint = PatrolPoints[PatrolPointNumber];
 
 			AIController = Cast<AAIController>(GetController());
 			if (AIController)
@@ -146,12 +157,29 @@ void AFPSAIGuard::MoveToNextPatrolPoint()
 				AIController->MoveToActor(CurrentPatrolPoint);
 			}
 
+			if (PatrolPointNumber >= PatrolPoints.Num() - 1)
+			{
+				PatrolPointNumber = 0;
+			}
+
 			break;
 		}
+	}
+}
 
-		/* if (PatrolPointNumber >= PatrolPoints.Num() - 1)
-		{
-			PatrolPointNumber = 0;
-		} */
+void AFPSAIGuard::WalkToNoise(FVector Location)
+{
+	AIController->MoveToLocation(Location);
+
+	GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
+	GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 5.0f);
+}
+
+void AFPSAIGuard::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	AFPSCharacter* Character = Cast<AFPSCharacter>(OtherActor);
+	if (Character)
+	{
+		Character->Die();
 	}
 }
