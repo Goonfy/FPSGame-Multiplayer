@@ -13,7 +13,7 @@ class USoundBase;
 class UAnimSequence;
 class USpringArmComponent;
 class UPawnNoiseEmitterComponent;
-class AActor;
+class AFPSProjectile;
 
 UCLASS()
 class FPSGAME_API AFPSCharacter : public ACharacter
@@ -31,15 +31,27 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Mesh")
 	USkeletalMeshComponent* Mesh1PComponent;
 
+	/** Gun mesh: 1st person view (seen only by self) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mesh")
+	USkeletalMeshComponent* GunMeshComponent;
+
 	/** First person camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	UCameraComponent* CameraComponent;
 
-	UPROPERTY(EditDefaultsOnly, Category="Weapon")
-	TSubclassOf<AActor> WeaponClass;
+	/* UPROPERTY(EditDefaultsOnly, Category="Weapon")
+	TSubclassOf<AActor> WeaponClass; */
+
+	/** Sound to play each time we fire */
+	UPROPERTY(EditDefaultsOnly, Category="Gameplay")
+	USoundBase* FireSound;
+
+	/** AnimMontage to play each time we fire */
+	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
+	UAnimSequenceBase* FireAnimation;
 
 	UPROPERTY(EditDefaultsOnly, Category="Throwable")
-	TSubclassOf<AActor> ThrowableClass;
+	TSubclassOf<AFPSProjectile> ThrowableClass;
 
 	UPROPERTY(EditDefaultsOnly, Category="Grenade")
 	USoundBase* ThrowSound;
@@ -50,10 +62,11 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
 	UPawnNoiseEmitterComponent* NoiseEmitterComponent;
 
-	AActor* Weapon;
-	AActor* DummyWeapon;
+	/* AActor* Weapon;
+	AActor* DummyWeapon; */
 
 	void Throw();
+	void Fire();
 
 	/** Handles moving forward/backward */
 	void MoveForward(float Val);

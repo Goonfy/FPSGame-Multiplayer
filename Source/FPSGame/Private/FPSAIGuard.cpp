@@ -5,9 +5,8 @@
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "FPSGameMode.h"
+#include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Engine/World.h"
-#include "AIController.h"
-#include "Components/CapsuleComponent.h"
 #include "FPSCharacter.h"
 
 // Sets default values
@@ -20,13 +19,9 @@ AFPSAIGuard::AFPSAIGuard()
 	PawnSensingComp->OnSeePawn.AddDynamic(this, &AFPSAIGuard::OnPawnSeen);
 	PawnSensingComp->OnHearNoise.AddDynamic(this, &AFPSAIGuard::OnNoiseHeard);
 
-	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AFPSAIGuard::OnHit);
-
 	GuardState = EAIState::Idle;
 
 	PatrolPointNumber = 0;
-	bIsSuspicious = false;
-	bIsAlerted = false;
 }
 
 // Called when the game starts or when spawned
@@ -36,7 +31,10 @@ void AFPSAIGuard::BeginPlay()
 	
 	OriginalRotation = GetActorRotation();
 
-	MoveToNextPatrolPoint();
+	if (bPatrol)
+	{
+		MoveToNextPatrolPoint();
+	}
 }
 
 // Called every frame
@@ -44,43 +42,52 @@ void AFPSAIGuard::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Patrol Goal Checks
 	if (CurrentPatrolPoint)
 	{
-		if (AIController->GetMoveStatus() == EPathFollowingStatus::Idle && !bIsSuspicious && !bIsAlerted)
+		FVector Delta = GetActorLocation() - CurrentPatrolPoint->GetActorLocation();
+		float DistanceToGoal = Delta.Size();
+
+		// Check if we are within 50 units of our goal, if so - pick a new patrol point
+		if (DistanceToGoal < 80)
 		{
 			MoveToNextPatrolPoint();
 		}
-		else if (bIsAlerted)
-		{
-
-		}
-	}
+	} 
 }
 
 void AFPSAIGuard::OnPawnSeen(APawn* SeenPawn)
 {
-	if (SeenPawn)
+	if (SeenPawn == nullptr)
 	{
-		DrawDebugSphere(GetWorld(), SeenPawn->GetActorLocation(), 32.0f, 12, FColor::Red, false, 10.0f, 0.0f, 1.0f);	
+		return;
 	}
 
-	/* AFPSGameMode* GM = Cast<AFPSGameMode>(GetWorld()->GetAuthGameMode());
+	DrawDebugSphere(GetWorld(), SeenPawn->GetActorLocation(), 32.0f, 12, FColor::Red, false, 10.0f);
+
+	AFPSGameMode* GM = Cast<AFPSGameMode>(GetWorld()->GetAuthGameMode());
 	if (GM)
 	{
 		GM->CompleteMission(SeenPawn, false);
-	} */
+	}
+
+	AFPSCharacter* Character = Cast<AFPSCharacter>(SeenPawn);
+	if (Character)
+	{
+		Character->Die();
+	}
+
+	//GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
+	//GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 3.0f);
 
 	SetGuardState(EAIState::Alerted);
 
-	AIController->MoveToActor(SeenPawn, 0.0f);
-
-	/* // Stop Movement
-	if (AIController)
+	// Stop Movement if Patrolling
+	AController* ControllerAI = GetController();
+	if (ControllerAI)
 	{
-		AIController->StopMovement();
-	} */
-
-	bIsAlerted = true;
+		ControllerAI->StopMovement();
+	}
 }
 
 void AFPSAIGuard::OnNoiseHeard(APawn* NoiseInstigator, const FVector& Location, float Volume)
@@ -101,34 +108,35 @@ void AFPSAIGuard::OnNoiseHeard(APawn* NoiseInstigator, const FVector& Location, 
 
 	SetActorRotation(NewLookAt);
 
-	GetWorldTimerManager().ClearTimer(TimerHandle_WalkToNoise);
-	GetWorldTimerManager().SetTimer(TimerHandle_WalkToNoise, FTimerDelegate::CreateUObject(this, &AFPSAIGuard::WalkToNoise, Location), 5.0f, false);
+	GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
+	GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 3.0f);
 
 	SetGuardState(EAIState::Suspicious);
 
-	// Stop Movement
-	if (AIController)
+	// Stop Movement if Patrolling
+	AController* ControllerAI = GetController();
+	if (ControllerAI)
 	{
-		AIController->StopMovement();
+		ControllerAI->StopMovement();
 	}
-
-	bIsSuspicious = true;
 }
 
 void AFPSAIGuard::ResetOrientation()
 {
-	if (GuardState == EAIState::Alerted)
+	/* if (GuardState == EAIState::Alerted)
 	{
 		return;
-	}
+	} */
 
 	SetActorRotation(OriginalRotation);
 
 	SetGuardState(EAIState::Idle);
 
-	MoveToNextPatrolPoint();
-
-	bIsSuspicious = false;
+	// Stopped investigating...if we are a patrolling pawn, pick a new patrol point to move to
+	if (bPatrol)
+	{
+		MoveToNextPatrolPoint();
+	}
 }
 
 void AFPSAIGuard::SetGuardState(EAIState NewState)
@@ -151,11 +159,7 @@ void AFPSAIGuard::MoveToNextPatrolPoint()
 		{
 			CurrentPatrolPoint = PatrolPoints[PatrolPointNumber];
 
-			AIController = Cast<AAIController>(GetController());
-			if (AIController)
-			{
-				AIController->MoveToActor(CurrentPatrolPoint);
-			}
+			UAIBlueprintHelperLibrary::SimpleMoveToActor(GetController(), CurrentPatrolPoint);
 
 			if (PatrolPointNumber >= PatrolPoints.Num() - 1)
 			{
@@ -167,19 +171,9 @@ void AFPSAIGuard::MoveToNextPatrolPoint()
 	}
 }
 
-void AFPSAIGuard::WalkToNoise(FVector Location)
+void AFPSAIGuard::Die()
 {
-	AIController->MoveToLocation(Location);
+	GetWorldTimerManager().ClearAllTimersForObject(this);
 
-	GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
-	GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 5.0f);
-}
-
-void AFPSAIGuard::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-	AFPSCharacter* Character = Cast<AFPSCharacter>(OtherActor);
-	if (Character)
-	{
-		Character->Die();
-	}
+	Destroy();
 }

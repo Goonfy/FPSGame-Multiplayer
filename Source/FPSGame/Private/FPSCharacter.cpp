@@ -7,10 +7,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 #include "Components/PawnNoiseEmitterComponent.h"
-#include "GameFramework/Actor.h"
 #include "FPSAIGuard.h"
-#include "FPSWeapon.h"
-#include "Components/BoxComponent.h"
+#include "FPSProjectile.h"
 
 AFPSCharacter::AFPSCharacter()
 {
@@ -27,6 +25,11 @@ AFPSCharacter::AFPSCharacter()
 	Mesh1PComponent->SetRelativeRotation(FRotator(2.0f, -15.0f, 5.0f));
 	Mesh1PComponent->SetRelativeLocation(FVector(0, 0, -160.0f));
 
+	// Create a gun mesh component
+	GunMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
+	GunMeshComponent->CastShadow = false;
+	GunMeshComponent->SetupAttachment(Mesh1PComponent, "GripPoint");
+
 	NoiseEmitterComponent = CreateDefaultSubobject<UPawnNoiseEmitterComponent>(TEXT("NoiseEmitter"));
 }
 
@@ -35,24 +38,6 @@ void AFPSCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	//Set Spawn Collision Handling Override
-	FActorSpawnParameters ActorSpawnParams;
-	ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	ActorSpawnParams.Owner = this;
-
-	// spawn the Weapon at First Person Mesh
-	Weapon = GetWorld()->SpawnActor<AActor>(WeaponClass, GetActorLocation(), GetActorRotation(), ActorSpawnParams);
-	if (Weapon)
-	{
-		Weapon->AttachToComponent(Mesh1PComponent, FAttachmentTransformRules::SnapToTargetNotIncludingScale, "GripPoint");
-	}
-
-	/* // spawn the Weapon at Third Person Mesh
-	DummyWeapon = GetWorld()->SpawnActor<AActor>(WeaponClass, GetActorLocation(), GetActorRotation(), ActorSpawnParams);
-	if (DummyWeapon)
-	{
-		DummyWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, "GripPoint");
-	} */
 }
 
 void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -61,7 +46,7 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	check(PlayerInputComponent);
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	//PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AFPSWeapon::Fire);
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AFPSCharacter::Fire);
 	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AFPSCharacter::Throw);
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &AFPSCharacter::MoveForward);
@@ -69,6 +54,73 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
+}
+
+void AFPSCharacter::Fire()
+{
+	float LineTraceDistance = 1500.0f;
+
+	FVector CameraLocation = GetFirstPersonCameraComponent()->GetComponentLocation();
+	FRotator CameraRotation = GetFirstPersonCameraComponent()->GetComponentRotation();
+	
+	FVector TraceEnd = CameraLocation + (CameraRotation.Vector() * LineTraceDistance);
+	
+	// additional trace parameters
+	FCollisionQueryParams QueryParams;
+	QueryParams.bTraceComplex = true;
+	QueryParams.AddIgnoredActor(this);
+
+	//Re-initialize hit info
+	FHitResult Hit;
+	bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		Hit,      // FHitResult object that will be populated with hit info
+		CameraLocation,      // starting position
+		TraceEnd,        // end position
+		ECC_Visibility,  // collision channel
+		QueryParams      // additional trace settings
+	);
+
+	if (bIsHit && Hit.GetActor())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("We hit something"));
+		// start to end, green, will lines always stay on, depth priority, thickness of line
+		DrawDebugLine(GetWorld(), CameraLocation, TraceEnd, FColor::Green, false, 5.f, ECC_WorldStatic, 1.f);
+
+		UE_LOG(LogTemp, Warning, TEXT("Hit actor name %s"), *Hit.GetActor()->GetName());
+		UE_LOG(LogTemp, Warning, TEXT("Hit actor distance %s"), *FString::SanitizeFloat(Hit.Distance));
+		DrawDebugBox(GetWorld(), Hit.ImpactPoint, FVector(10.f, 10.f, 10.f), FColor::Red, false, 5.f, ECC_WorldStatic, 5.f);
+
+		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Hit.GetActor()->GetRootComponent());
+		if (PrimComp && PrimComp->IsSimulatingPhysics())
+		{
+			PrimComp->AddImpulseAtLocation(CameraRotation.Vector() * 1000.f * PrimComp->GetMass(), Hit.ImpactPoint);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nothing was hit"));
+		// start to end, purple, will lines always stay on, depth priority, thickness of line
+		DrawDebugLine(GetWorld(), CameraLocation, TraceEnd, FColor::Purple, false, 5.f, ECC_WorldStatic, 1.f);
+	}
+
+	MakeNoise(1.0f, this);
+
+	// try and play the sound if specified
+	if (FireSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
+	}
+
+	// try and play a firing animation if specified
+	if (FireAnimation)
+	{
+		// Get the animation object for the arms mesh
+		UAnimInstance* AnimInstance = GetMesh1P()->GetAnimInstance();
+		if (AnimInstance)
+		{
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(FireAnimation, "Arms", 0.0f);
+		}
+	}
 }
 
 void AFPSCharacter::Throw()
@@ -89,7 +141,7 @@ void AFPSCharacter::Throw()
 		ActorSpawnParams.Instigator = this;
 
 		// spawn the projectile at Character Location
-		GetWorld()->SpawnActor<AActor>(ThrowableClass, SpawnLocation, PlayerRotation, ActorSpawnParams);
+		GetWorld()->SpawnActor<AFPSProjectile>(ThrowableClass, SpawnLocation, PlayerRotation, ActorSpawnParams);
 	
 		if (ThrowSound)
 		{
@@ -127,11 +179,11 @@ void AFPSCharacter::MoveRight(float Value)
 
 void AFPSCharacter::Die()
 {
-	AFPSWeapon* FPSWeapon = Cast<AFPSWeapon>(Weapon);
+	/* AFPSWeapon* FPSWeapon = Cast<AFPSWeapon>(Weapon);
 	if (FPSWeapon)
 	{
 		FPSWeapon->BoxComponent->SetSimulatePhysics(true);
-	}
+	} */
 
 	Destroy();
 }

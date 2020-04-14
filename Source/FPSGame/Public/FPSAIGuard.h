@@ -7,7 +7,6 @@
 #include "FPSAIGuard.generated.h"
 
 class UPawnSensingComponent;
-class AAIController;
 
 UENUM(BlueprintType)
 enum class EAIState : uint8
@@ -36,24 +35,20 @@ protected:
 	FRotator OriginalRotation;
 
 	FTimerHandle TimerHandle_ResetOrientation;
-	FTimerHandle TimerHandle_WalkToNoise;
 
 	EAIState GuardState;
 
-	AAIController* AIController;
-
-	UPROPERTY(EditAnywhere, Category = "AI")
+	/* Patrol points to patrol between */
+	UPROPERTY(EditInstanceOnly, Category = "AI", meta = (EditCondition="bPatrol"))
 	TArray<AActor*> PatrolPoints;
 
 	AActor* CurrentPatrolPoint;
 
 	int PatrolPointNumber;
 
-	bool bIsSuspicious;
-	bool bIsAlerted;
-
-	UFUNCTION()
-	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	/* Let the guard go on patrol */
+	UPROPERTY(EditInstanceOnly, Category = "AI")
+	bool bPatrol;
 
 	UFUNCTION()
 	void OnPawnSeen(APawn* SeenPawn);
@@ -63,9 +58,6 @@ protected:
 
 	UFUNCTION()
 	void ResetOrientation();
-
-	UFUNCTION()
-	void WalkToNoise(FVector Location);
 
 	void SetGuardState(EAIState NewState);
 
@@ -77,4 +69,6 @@ protected:
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	void Die();
 };

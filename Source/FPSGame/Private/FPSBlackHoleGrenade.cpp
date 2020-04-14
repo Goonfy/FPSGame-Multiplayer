@@ -60,7 +60,7 @@ void AFPSBlackHoleGrenade::BeginPlay()
 	Super::BeginPlay();
 	
 	/* Activate the fuze to explode the bomb after several seconds */
-	GetWorld()->GetTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSBlackHoleGrenade::OnExplode, MaxFuzeTime, false);
+	GetWorldTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSBlackHoleGrenade::OnExplode, MaxFuzeTime, false);
 }
 
 // Called every frame
@@ -132,14 +132,14 @@ void AFPSBlackHoleGrenade::OnExplode()
 		UGameplayStatics::PlaySoundAtLocation(this, ActivateGrenadeSound, GetActorLocation());
 
 	// Clear ALL timers that belong to this (Actor) instance.
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	GetWorldTimerManager().ClearAllTimersForObject(this);
 
-	GetWorld()->GetTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSBlackHoleGrenade::EndBlackHole, BlackHoleLifeSpan, false);
+	GetWorldTimerManager().SetTimer(FuzeTimerHandle, this, &AFPSBlackHoleGrenade::EndBlackHole, BlackHoleLifeSpan, false);
 }
 
 void AFPSBlackHoleGrenade::EndBlackHole()
 {
-	GetWorld()->GetTimerManager().ClearAllTimersForObject(this);
+	GetWorldTimerManager().ClearAllTimersForObject(this);
 
 	Destroy();
 }
