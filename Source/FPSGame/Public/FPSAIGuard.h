@@ -36,14 +36,13 @@ protected:
 
 	FTimerHandle TimerHandle_ResetOrientation;
 
+	UPROPERTY(ReplicatedUsing = OnRep_GuardState)
 	EAIState GuardState;
 
 	/* Patrol points to patrol between */
-	UPROPERTY(EditInstanceOnly, Category = "AI", meta = (EditCondition="bPatrol"))
+	//UPROPERTY(EditInstanceOnly, Category = "AI", meta = (EditCondition="bPatrol"))
 	TArray<AActor*> PatrolPoints;
-
 	AActor* CurrentPatrolPoint;
-
 	int PatrolPointNumber;
 
 	/* Let the guard go on patrol */
@@ -59,12 +58,17 @@ protected:
 	UFUNCTION()
 	void ResetOrientation();
 
+	UFUNCTION()
+	void OnRep_GuardState();
+
 	void SetGuardState(EAIState NewState);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "AI")
 	void OnStateChanged(EAIState NewState);
 
 	void MoveToNextPatrolPoint();
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 public:	
 	// Called every frame

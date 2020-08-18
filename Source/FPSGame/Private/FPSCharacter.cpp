@@ -9,6 +9,7 @@
 #include "Components/PawnNoiseEmitterComponent.h"
 #include "FPSAIGuard.h"
 #include "FPSProjectile.h"
+#include "Net/UnrealNetwork.h"
 
 AFPSCharacter::AFPSCharacter()
 {
@@ -56,8 +57,25 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
 }
 
+void AFPSCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!IsLocallyControlled())
+	{
+		FRotator NewRot = GetFirstPersonCameraComponent()->GetRelativeRotation();
+		NewRot.Pitch = RemoteViewPitch * 360.0f / 255.0f;
+
+		GetFirstPersonCameraComponent()->SetRelativeRotation(NewRot);
+	}
+}
+
 void AFPSCharacter::Fire()
 {
+	//ServerFire();
+
+	MakeNoise(1.0f, this);
+
 	float LineTraceDistance = 1500.0f;
 
 	FVector CameraLocation = GetFirstPersonCameraComponent()->GetComponentLocation();
@@ -80,20 +98,23 @@ void AFPSCharacter::Fire()
 		QueryParams      // additional trace settings
 	);
 
-	if (bIsHit && Hit.GetActor())
+	if (bIsHit)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("We hit something"));
 		// start to end, green, will lines always stay on, depth priority, thickness of line
 		DrawDebugLine(GetWorld(), CameraLocation, TraceEnd, FColor::Green, false, 5.f, ECC_WorldStatic, 1.f);
-
-		UE_LOG(LogTemp, Warning, TEXT("Hit actor name %s"), *Hit.GetActor()->GetName());
-		UE_LOG(LogTemp, Warning, TEXT("Hit actor distance %s"), *FString::SanitizeFloat(Hit.Distance));
-		DrawDebugBox(GetWorld(), Hit.ImpactPoint, FVector(10.f, 10.f, 10.f), FColor::Red, false, 5.f, ECC_WorldStatic, 5.f);
-
-		UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Hit.GetActor()->GetRootComponent());
-		if (PrimComp && PrimComp->IsSimulatingPhysics())
+		
+		if (Hit.GetActor())
 		{
-			PrimComp->AddImpulseAtLocation(CameraRotation.Vector() * 1000.f * PrimComp->GetMass(), Hit.ImpactPoint);
+			UE_LOG(LogTemp, Warning, TEXT("Hit actor name %s"), *Hit.GetActor()->GetName());
+			UE_LOG(LogTemp, Warning, TEXT("Hit actor distance %s"), *FString::SanitizeFloat(Hit.Distance));
+			DrawDebugBox(GetWorld(), Hit.ImpactPoint, FVector(10.f, 10.f, 10.f), FColor::Red, false, 5.f, ECC_WorldStatic, 5.f);
+
+			UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Hit.GetActor()->GetRootComponent());
+			if (PrimComp && PrimComp->IsSimulatingPhysics())
+			{
+				PrimComp->AddImpulseAtLocation(CameraRotation.Vector() * 1000.f * PrimComp->GetMass(), Hit.ImpactPoint);
+			}
 		}
 	}
 	else
@@ -102,8 +123,6 @@ void AFPSCharacter::Fire()
 		// start to end, purple, will lines always stay on, depth priority, thickness of line
 		DrawDebugLine(GetWorld(), CameraLocation, TraceEnd, FColor::Purple, false, 5.f, ECC_WorldStatic, 1.f);
 	}
-
-	MakeNoise(1.0f, this);
 
 	// try and play the sound if specified
 	if (FireSound)
@@ -125,6 +144,25 @@ void AFPSCharacter::Fire()
 
 void AFPSCharacter::Throw()
 {
+	ServerThrow();
+
+	if (ThrowSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, ThrowSound, GetActorLocation());
+	}
+
+	if (ThrowAnimation)
+	{
+		UAnimInstance* AnimInstance = Mesh1PComponent->GetAnimInstance();
+		if (AnimInstance)
+		{
+			AnimInstance->PlaySlotAnimationAsDynamicMontage(ThrowAnimation, "Arms", 0.0f);
+		}
+	}
+}
+
+void AFPSCharacter::ServerThrow_Implementation()
+{
 	if (ThrowableClass)
 	{
 		//To Spawn outside player collision box
@@ -142,21 +180,12 @@ void AFPSCharacter::Throw()
 
 		// spawn the projectile at Character Location
 		GetWorld()->SpawnActor<AFPSProjectile>(ThrowableClass, SpawnLocation, PlayerRotation, ActorSpawnParams);
-	
-		if (ThrowSound)
-		{
-			UGameplayStatics::PlaySoundAtLocation(this, ThrowSound, GetActorLocation());
-		}
-
-		if (ThrowAnimation)
-		{
-			UAnimInstance* AnimInstance = Mesh1PComponent->GetAnimInstance();
-			if (AnimInstance)
-			{
-				AnimInstance->PlaySlotAnimationAsDynamicMontage(ThrowAnimation, "Arms", 0.0f);
-			}
-		}
 	}
+}
+
+bool AFPSCharacter::ServerThrow_Validate()
+{
+	return true;
 }
 
 void AFPSCharacter::MoveForward(float Value)
@@ -186,4 +215,12 @@ void AFPSCharacter::Die()
 	} */
 
 	Destroy();
+}
+
+void AFPSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty> &OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AFPSCharacter, bIsCarryingObjective);
+	//DOREPLIFETIME_CONDITION(AFPSCharacter, bIsCarryingObjective, COND_OwnerOnly);
 }

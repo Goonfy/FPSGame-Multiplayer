@@ -5,9 +5,11 @@
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 #include "FPSGameMode.h"
-#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "AIController.h"
 #include "Engine/World.h"
 #include "FPSCharacter.h"
+#include "Net/UnrealNetwork.h"
+#include "EngineUtils.h"
 
 // Sets default values
 AFPSAIGuard::AFPSAIGuard()
@@ -30,9 +32,17 @@ void AFPSAIGuard::BeginPlay()
 	Super::BeginPlay();
 	
 	OriginalRotation = GetActorRotation();
-
+	
 	if (bPatrol)
 	{
+		for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+		{
+			if (It->GetName().Contains("TargetPoint"))
+			{
+				PatrolPoints.Add(*It);
+			}
+		}
+
 		MoveToNextPatrolPoint();
 	}
 }
@@ -49,7 +59,7 @@ void AFPSAIGuard::Tick(float DeltaTime)
 		float DistanceToGoal = Delta.Size();
 
 		// Check if we are within 50 units of our goal, if so - pick a new patrol point
-		if (DistanceToGoal < 80)
+		if (DistanceToGoal < 90)
 		{
 			MoveToNextPatrolPoint();
 		}
@@ -71,11 +81,11 @@ void AFPSAIGuard::OnPawnSeen(APawn* SeenPawn)
 		GM->CompleteMission(SeenPawn, false);
 	}
 
-	AFPSCharacter* Character = Cast<AFPSCharacter>(SeenPawn);
-	if (Character)
-	{
-		Character->Die();
-	}
+	// AFPSCharacter* Character = Cast<AFPSCharacter>(SeenPawn);
+	// if (Character)
+	// {
+	// 	Character->Die();
+	// }
 
 	//GetWorldTimerManager().ClearTimer(TimerHandle_ResetOrientation);
 	//GetWorldTimerManager().SetTimer(TimerHandle_ResetOrientation, this, &AFPSAIGuard::ResetOrientation, 3.0f);
@@ -83,10 +93,10 @@ void AFPSAIGuard::OnPawnSeen(APawn* SeenPawn)
 	SetGuardState(EAIState::Alerted);
 
 	// Stop Movement if Patrolling
-	AController* ControllerAI = GetController();
-	if (ControllerAI)
+	AAIController* AIController = Cast<AAIController>(GetController());
+	if (AIController)
 	{
-		ControllerAI->StopMovement();
+		AIController->StopMovement();
 	}
 }
 
@@ -114,10 +124,10 @@ void AFPSAIGuard::OnNoiseHeard(APawn* NoiseInstigator, const FVector& Location, 
 	SetGuardState(EAIState::Suspicious);
 
 	// Stop Movement if Patrolling
-	AController* ControllerAI = GetController();
-	if (ControllerAI)
+	AAIController* AIController = Cast<AAIController>(GetController());
+	if (AIController)
 	{
-		ControllerAI->StopMovement();
+		AIController->StopMovement();
 	}
 }
 
@@ -139,6 +149,11 @@ void AFPSAIGuard::ResetOrientation()
 	}
 }
 
+void AFPSAIGuard::OnRep_GuardState()
+{
+	OnStateChanged(GuardState);
+}
+
 void AFPSAIGuard::SetGuardState(EAIState NewState)
 {
 	if (GuardState == NewState)
@@ -147,19 +162,22 @@ void AFPSAIGuard::SetGuardState(EAIState NewState)
 	}
 
 	GuardState = NewState;
-
-	OnStateChanged(GuardState);
+	OnRep_GuardState();
 }
 
 void AFPSAIGuard::MoveToNextPatrolPoint()
 {
-	for(PatrolPointNumber; PatrolPointNumber < PatrolPoints.Num(); PatrolPointNumber++)
+	for(PatrolPointNumber; PatrolPoints.Num(); PatrolPointNumber++)
 	{
 		if (PatrolPoints[PatrolPointNumber] != CurrentPatrolPoint)
 		{
 			CurrentPatrolPoint = PatrolPoints[PatrolPointNumber];
 
-			UAIBlueprintHelperLibrary::SimpleMoveToActor(GetController(), CurrentPatrolPoint);
+			AAIController* AIController = Cast<AAIController>(GetController());
+			if (AIController)
+			{
+				AIController->MoveTo(CurrentPatrolPoint);
+			}
 
 			if (PatrolPointNumber >= PatrolPoints.Num() - 1)
 			{
@@ -176,4 +194,11 @@ void AFPSAIGuard::Die()
 	GetWorldTimerManager().ClearAllTimersForObject(this);
 
 	Destroy();
+}
+
+void AFPSAIGuard::GetLifetimeReplicatedProps(TArray<FLifetimeProperty> &OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AFPSAIGuard, GuardState);
 }

@@ -62,10 +62,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
 	UPawnNoiseEmitterComponent* NoiseEmitterComponent;
 
-	/* AActor* Weapon;
-	AActor* DummyWeapon; */
-
 	void Throw();
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerThrow();
+	void ServerThrow_Implementation();
+	bool ServerThrow_Validate();
+
 	void Fire();
 
 	/** Handles moving forward/backward */
@@ -76,6 +78,8 @@ protected:
 
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
 
+	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 public:
 	/** Returns Mesh1P subobject **/
 	USkeletalMeshComponent* GetMesh1P() const { return Mesh1PComponent; }
@@ -83,9 +87,10 @@ public:
 	/** Returns FirstPersonCameraComponent subobject **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return CameraComponent; }
 
-	UPROPERTY(BlueprintReadOnly, Category = "Gameplay")
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Gameplay")
 	bool bIsCarryingObjective;
 
 	void Die();
-};
 
+	virtual void Tick(float DeltaTime) override;
+};
